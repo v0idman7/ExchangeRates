@@ -7,10 +7,9 @@ const router = useRouter();
 
 <template>
   <a-page-header
-    style="border: 1px solid rgb(235, 237, 240)"
-    title="Exchange
-  Rates"
-    @back="() => router.push('/')"
+    id="header"
+    title="Exchange Rates"
+    @back="router.push('/')"
   >
     <template #backIcon>
       <HomeOutlined />
@@ -19,4 +18,8 @@ const router = useRouter();
   <RouterView />
 </template>
 
-<style></style>
+<style scoped>
+#deader {
+  border: 1px solid rgb(235, 237, 240)
+}
+</style>
