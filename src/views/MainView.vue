@@ -1,25 +1,26 @@
 <script setup>
 import { DeleteOutlined } from "@ant-design/icons-vue";
-import { onMounted, ref, watchPostEffect } from "vue";
+import { onBeforeMount, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
-import axios from "axios";
+import { getRates } from "@/api"
 
-const localRates = ref(["449", "431", "451", "456", "462"]);
-const rates = ref([]);
+
+const localRates = ref([431, 449, 451, 456, 462]);
 const data = ref([]);
-const options = ref([{}]);
-const value = ref([]);
+let rates = {};
+const options = ref([]);
+const selected = ref([]);
 
 const columns = [
   {
     title: "Name",
-    dataIndex: "Cur_Name",
-    key: "Cur_Name",
+    dataIndex: "name",
+    key: "Name",
   },
   {
     title: "Rate",
-    dataIndex: "Cur_OfficialRate",
-    key: "Cur_OfficialRate",
+    dataIndex: "rate",
+    key: "Rate",
   },
   {
     title: "Action",
@@ -27,57 +28,62 @@ const columns = [
   },
 ];
 
-const fetchRates = async () => {
-  try {
-    const responce = await axios.get(
-      "https://www.nbrb.by/api/exrates/rates?periodicity=0"
-    );
-    rates.value = responce.data;
-  } catch (e) {
-    console.error(e);
-  }
-};
-
-onMounted(async () => {
-  const localRatesString = localStorage.getItem("localRates");
-  if (localRatesString) {
-    localRates.value = localRatesString.split(" ");
+onBeforeMount(async () => {
+  const cacheRates = localStorage.getItem("localRates");
+  if (cacheRates && cacheRates !== '[]') {
+    localRates.value = JSON.parse(cacheRates);
   } else {
-    localStorage.setItem("localRates", localRates.value.join(" "));
+    localStorage.setItem("localRates", JSON.stringify(localRates.value));
   }
-  await fetchRates();
-  options.value = rates.value
-    .filter((rate) => !localRates.value.includes(String(rate.Cur_ID)))
-    .map((rate) => ({
-      value: String(rate.Cur_ID),
-      label: rate.Cur_Abbreviation,
-    }));
-  data.value = rates.value.filter((rate) =>
-    localRates.value.includes(String(rate.Cur_ID))
-  );
+
+  rates = await getRates();
+  options.value = []
+  data.value = []
+  Object.values(rates).forEach(rate => {
+    if (localRates.value.includes(rate.id)) {
+      data.value.push(rate)
+    } else {
+      options.value.push( {
+        value: rate.id,
+        label: rate.abreviation,
+      })
+    }
+  })
 });
 
-watchPostEffect(() => {
-  options.value = rates.value
-    .filter((rate) => !localRates.value.includes(String(rate.Cur_ID)))
-    .map((rate) => ({
-      value: String(rate.Cur_ID),
-      label: rate.Cur_Abbreviation,
-    }));
-  data.value = rates.value.filter((rate) =>
-    localRates.value.includes(String(rate.Cur_ID))
-  );
-});
+watch(() => [...localRates.value], (value) => {
+  localStorage.setItem("localRates", JSON.stringify(value))
+})
 
 const handleDelete = (id) => {
-  localRates.value = localRates.value.filter((item) => item !== String(id));
-  localStorage.setItem("localRates", localRates.value.join(" "));
+  const index = localRates.value.findIndex(item => item === id)
+  if (index !== -1) {
+    localRates.value.splice(index, 1)
+    data.value.splice(index, 1)
+  }
+
+  const rate = rates[id]
+  if (rate) {
+    options.value.push({
+      value: rate.id,
+      label: rate.abreviation,
+    })
+  }
 };
 
 const handleAdd = () => {
-  localRates.value = localRates.value.concat(...value.value);
-  value.value = [];
-  localStorage.setItem("localRates", localRates.value.join(" "));
+  selected.value.forEach(rateId => {
+    const index = options.value.findIndex(item => item.value === rateId)
+    if (index !== -1) {
+      options.value.splice(index, 1)
+    }
+    const rate = rates[rateId]
+    if (rate) {
+      data.value.push(rate)
+    }
+  })
+  localRates.value.push(...selected.value)
+  selected.value = [];
 };
 </script>
 
@@ -88,23 +94,16 @@ const handleAdd = () => {
     :columns="columns"
   >
     <template #bodyCell="{ column, record }">
-      <template v-if="column.key === 'Cur_Name'">
-        <RouterLink :to="`/currency/${record.Cur_ID}`">
-          {{ `${record.Cur_Scale}&nbsp;${record.Cur_Name}` }}
+      <template v-if="column.key === 'Name'">
+        <RouterLink :to="`/currency/${record.id}`">
+          {{ record.name }}
         </RouterLink>
-      </template>
-      <template v-else-if="column.key === 'Cur_OfficialRate'">
-        <span>
-          {{
-            `${record.Cur_Scale}&nbsp;${record.Cur_Abbreviation} = ${record.Cur_OfficialRate}&nbsp;BYN`
-          }}
-        </span>
       </template>
       <template v-else-if="column.key === 'action'">
         <a-button
           type="primary"
           shape="circle"
-          @click="handleDelete(record.Cur_ID)"
+          @click="handleDelete(record.id)"
         >
           <template #icon><DeleteOutlined /></template>
         </a-button>
@@ -113,7 +112,7 @@ const handleAdd = () => {
     <template #footer>
       <a-button style="margin-right: 15px" @click="handleAdd">Add</a-button>
       <a-select
-        v-model:value="value"
+        v-model:value="selected"
         mode="tags"
         style="width: 70%"
         placeholder="Tags Mode"
